@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>PMKSY Import Wizards</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        h1 { margin-bottom: 1rem; }
+        ul { list-style: none; padding: 0; }
+        li { margin-bottom: 0.5rem; }
+        a { text-decoration: none; color: #0b5ed7; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>PMKSY Data Import</h1>
+    <p>Select a dataset to begin importing survey records.</p>
+    <ul>
+        {% for wizard in wizards %}
+            <li>
+                <a href="{% url 'pmksy:wizard' wizard.slug %}">{{ wizard.name }}</a>
+            </li>
+        {% empty %}
+            <li>No import wizards are currently configured.</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
