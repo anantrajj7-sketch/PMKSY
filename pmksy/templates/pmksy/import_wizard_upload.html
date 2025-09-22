@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{{ wizard.name }} Import</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        form { margin-top: 1.5rem; }
+        .actions { margin-top: 1rem; }
+        a { color: #0b5ed7; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .messages { color: #c00; }
+    </style>
+</head>
+<body>
+    <h1>{{ wizard.name }} &ndash; Upload File</h1>
+    <p>Upload a CSV, Excel, or JSON file exported from the PMKSY survey.</p>
+
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div class="actions">
+            <button type="submit">Upload &amp; Preview</button>
+            <a href="{% url 'pmksy:import-home' %}">Back to all imports</a>
+        </div>
+    </form>
+</body>
+</html>
