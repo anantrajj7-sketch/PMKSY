@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
@@ -69,3 +70,41 @@ class FarmersImportUUIDTests(TestCase):
         self.assertIsNotNone(record.content_type)
         self.assertEqual(record.content_type.model, "farmer")
         self.assertEqual(run.record_count, 1)
+
+    def test_preview_renders_values_for_numeric_field_map(self) -> None:
+        """Preview should display values when field_map uses numeric indexes."""
+
+        class SequenceLoader:
+            def __init__(self, run):  # pragma: no cover - simple data holder
+                self.run = run
+
+            def load_iter(self):
+                class MockTable:
+                    field_map = {"Name": 0}
+
+                    def __iter__(self_inner):
+                        yield ("Indexed Farmer",)
+
+                return MockTable()
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(
+            MEDIA_ROOT=media_root
+        ):
+            upload = SimpleUploadedFile(
+                "farmers.csv",
+                "name\nignored\n".encode("utf-8"),
+                content_type="text/csv",
+            )
+            response = self.client.post(self.wizard_url, {"source_file": upload})
+
+            self.assertEqual(response.status_code, 302)
+            preview_url = response["Location"]
+
+            with mock.patch(
+                "pmksy.views.data_wizard_registry.get_loader",
+                return_value=SequenceLoader,
+            ):
+                preview_response = self.client.get(preview_url)
+
+        self.assertEqual(preview_response.status_code, 200)
+        self.assertIn("Indexed Farmer", preview_response.content.decode())
