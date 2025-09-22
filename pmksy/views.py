@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from numbers import Integral
 from typing import Dict, Iterable, List, Tuple, Type
 
 from django import forms
@@ -110,7 +111,13 @@ def get_preview_rows(run: Run, limit: int = 5) -> Tuple[List[str], List[List[str
 
         if hasattr(table, "field_map") and table.field_map:
             headers = list(table.field_map.keys())
-            lookup_keys = [table.field_map[h] for h in headers]
+
+            def _normalize_lookup_key(key: object) -> object:
+                if isinstance(key, Integral) and not isinstance(key, bool):
+                    return str(key)
+                return key
+
+            lookup_keys = [_normalize_lookup_key(table.field_map[h]) for h in headers]
 
         iterator: Iterable = table
         for index, row in enumerate(iterator):
