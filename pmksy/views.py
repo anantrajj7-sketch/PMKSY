@@ -178,6 +178,7 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
                 )
             context = {
                 "wizard": self.wizard_config,
+                "wizard_slug": self.wizard_slug,
                 "run": run,
                 "headers": headers,
                 "rows": rows,
@@ -187,6 +188,7 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
 
         context = {
             "wizard": self.wizard_config,
+            "wizard_slug": self.wizard_slug,
             "form": self.form_class(),
         }
         return render(request, self.upload_template_name, context)
