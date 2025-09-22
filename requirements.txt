@@ -1,6 +1,6 @@
 Django>=5.0,<6.0
 djangorestframework>=3.15.0
 # django-data-wizard does not have a PyPI release; install from GitHub
--e git+https://github.com/wq/django-data-wizard.git#egg=django-data-wizard
+data-wizard
 openpyxl>=3.1.0
 tablib[html,xls,xlsx]>=3.5.0
