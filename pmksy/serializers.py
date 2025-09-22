@@ -9,6 +9,7 @@ class FarmerByNameField(serializers.RelatedField):
     """Serializer field that resolves farmers by their name."""
 
     default_error_messages = {
+        "required": "Farmer name is required.",
         "blank": "Please provide a farmer name.",
         "does_not_exist": "Farmer with name '{value}' does not exist.",
         "invalid": "Invalid farmer name provided.",
