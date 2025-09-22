@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple, Type
 
 from django import forms
 from django.contrib import messages
@@ -21,6 +21,45 @@ from data_wizard.sources.models import FileSource
 from .importers import REGISTRATIONS
 
 logger = logging.getLogger(__name__)
+
+
+PREVIEW_ERROR_MESSAGE = (
+    "We couldn't read the uploaded file. Please upload a supported format."
+)
+
+
+class PreviewGenerationError(Exception):
+    """Raised when a preview cannot be generated for an uploaded dataset."""
+
+
+PREVIEW_LOAD_ERRORS: Tuple[Type[BaseException], ...] = (ValueError,)
+
+try:  # pragma: no cover - optional dependency for XLS files
+    from xlrd import XLRDError  # type: ignore
+except ImportError:  # pragma: no cover - fallback when xlrd is unavailable
+    XLRDError = None  # type: ignore[assignment]
+else:  # pragma: no cover - exercised only when xlrd is installed
+    PREVIEW_LOAD_ERRORS = PREVIEW_LOAD_ERRORS + (XLRDError,)
+
+try:  # pragma: no cover - optional dependency for XLSX files
+    from openpyxl.utils.exceptions import InvalidFileException
+except ImportError:  # pragma: no cover - fallback when openpyxl is unavailable
+    InvalidFileException = None  # type: ignore[assignment]
+else:  # pragma: no cover - exercised only when openpyxl is installed
+    PREVIEW_LOAD_ERRORS = PREVIEW_LOAD_ERRORS + (InvalidFileException,)
+
+try:  # pragma: no cover - optional dependency used by data_wizard
+    import itertable.exceptions as itertable_exceptions  # type: ignore
+except ImportError:  # pragma: no cover - fallback when itertable is unavailable
+    itertable_exceptions = None  # type: ignore[assignment]
+else:  # pragma: no cover - exercised only when itertable is installed
+    _itertable_error_types: List[Type[BaseException]] = []
+    for name in ("TableError", "TableLoadError", "UnsupportedFormat"):
+        exc = getattr(itertable_exceptions, name, None)
+        if isinstance(exc, type) and issubclass(exc, BaseException):
+            _itertable_error_types.append(exc)
+    if _itertable_error_types:
+        PREVIEW_LOAD_ERRORS = PREVIEW_LOAD_ERRORS + tuple(_itertable_error_types)
 
 
 try:  # pragma: no cover - compatibility for future data_wizard releases
@@ -61,32 +100,36 @@ def get_preview_rows(run: Run, limit: int = 5) -> Tuple[List[str], List[List[str
 
     Loader = data_wizard_registry.get_loader(run.loader)
     loader = Loader(run)
-    table = loader.load_iter()
 
     headers: List[str] = []
     rows: List[List[str]] = []
 
-    if hasattr(table, "field_map") and table.field_map:
-        headers = list(table.field_map.keys())
+    try:
+        table = loader.load_iter()
 
-    iterator: Iterable = table
-    for index, row in enumerate(iterator):
-        if hasattr(row, "_asdict"):
-            data = row._asdict()
-        elif isinstance(row, dict):
-            data = row
-        elif isinstance(row, (list, tuple)):
-            data = {str(i): value for i, value in enumerate(row)}
-        else:
-            data = {"value": row}
+        if hasattr(table, "field_map") and table.field_map:
+            headers = list(table.field_map.keys())
 
-        if not headers:
-            headers = list(data.keys())
+        iterator: Iterable = table
+        for index, row in enumerate(iterator):
+            if hasattr(row, "_asdict"):
+                data = row._asdict()
+            elif isinstance(row, dict):
+                data = row
+            elif isinstance(row, (list, tuple)):
+                data = {str(i): value for i, value in enumerate(row)}
+            else:
+                data = {"value": row}
 
-        rows.append([str(data.get(column, "")) for column in headers])
+            if not headers:
+                headers = list(data.keys())
 
-        if index + 1 >= limit:
-            break
+            rows.append([str(data.get(column, "")) for column in headers])
+
+            if index + 1 >= limit:
+                break
+    except PREVIEW_LOAD_ERRORS as exc:
+        raise PreviewGenerationError("Unable to load preview data") from exc
 
     return headers, rows
 
@@ -125,9 +168,17 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
         run_id = request.GET.get("run")
         if run_id:
             run = self._get_user_run(run_id)
-            headers, rows = get_preview_rows(run)
+            try:
+                headers, rows = get_preview_rows(run)
+            except PreviewGenerationError:
+                logger.exception("Failed to generate preview for run %s", run.pk)
+                messages.error(request, PREVIEW_ERROR_MESSAGE)
+                return redirect(
+                    reverse("pmksy:wizard", kwargs={"wizard_slug": self.wizard_slug})
+                )
             context = {
                 "wizard": self.wizard_config,
+                "wizard_slug": self.wizard_slug,
                 "run": run,
                 "headers": headers,
                 "rows": rows,
@@ -137,6 +188,7 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
 
         context = {
             "wizard": self.wizard_config,
+            "wizard_slug": self.wizard_slug,
             "form": self.form_class(),
         }
         return render(request, self.upload_template_name, context)

@@ -53,7 +53,7 @@
         {% csrf_token %}
         {{ confirm_form.as_p }}
         <button type="submit">Import Records</button>
-        <a href="{% url 'pmksy:wizard' wizard.slug %}">Upload another file</a>
+        <a href="{% url 'pmksy:wizard' wizard_slug %}">Upload another file</a>
     </form>
 </body>
 </html>
