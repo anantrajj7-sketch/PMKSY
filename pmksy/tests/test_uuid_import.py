@@ -52,6 +52,7 @@ class FarmersImportUUIDTests(TestCase):
 
             preview_response = self.client.get(redirect_url)
             self.assertEqual(preview_response.status_code, 200)
+            self.assertIn("Test Farmer", preview_response.content.decode())
 
             confirm_response = self.client.post(
                 self.wizard_url, {"run_id": run_id}, follow=True
