@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 from urllib.parse import parse_qs, urlparse
 
@@ -72,3 +73,43 @@ Jane Doe,Small,1.5
         self.assertTrue(record.success)
         self.assertEqual(record.content_type.model, "landholding")
         self.assertIn(record.object_id, {None, str(land_holding.land_id)})
+
+    def test_import_missing_farmer_reports_error(self) -> None:
+        """Omitting the farmer column should report a validation error, not crash."""
+
+        csv_content = """category,total_area_ha
+Small,1.5
+"""
+        upload = SimpleUploadedFile(
+            "land_holdings.csv",
+            csv_content.encode("utf-8"),
+            content_type="text/csv",
+        )
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(
+            MEDIA_ROOT=media_root
+        ):
+            response = self.client.post(self.wizard_url, {"source_file": upload})
+
+            self.assertEqual(response.status_code, 302)
+            redirect_url = response["Location"]
+            run_id = parse_qs(urlparse(redirect_url).query)["run"][0]
+
+            preview_response = self.client.get(redirect_url)
+            self.assertEqual(preview_response.status_code, 200)
+
+            confirm_response = self.client.post(
+                self.wizard_url, {"run_id": run_id}, follow=True
+            )
+
+        self.assertEqual(confirm_response.status_code, 200)
+        self.assertIn("Import Complete", confirm_response.content.decode())
+
+        self.assertFalse(LandHolding.objects.exists())
+
+        run = Run.objects.get(pk=int(run_id))
+        record = run.record_set.get()
+        self.assertFalse(record.success)
+
+        errors = json.loads(record.fail_reason)
+        self.assertEqual(errors["farmer"], ["Farmer name is required."])
