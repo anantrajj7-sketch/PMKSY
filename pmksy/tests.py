@@ -57,3 +57,45 @@ class PMKSYImportWizardPreviewTests(TestCase):
         self.assertTrue(
             any("Failed to generate preview" in message for message in logs.output)
         )
+
+
+class AuthenticationFlowTests(TestCase):
+    """Ensure unauthenticated users are prompted to log in before importing."""
+
+    def setUp(self) -> None:
+        user_model = get_user_model()
+        self.password = "password123"
+        self.user = user_model.objects.create_user(
+            username="authuser",
+            email="authuser@example.com",
+            password=self.password,
+        )
+        self.import_home_url = reverse("pmksy:import-home")
+        self.login_url = reverse("login")
+
+    def test_import_home_redirects_to_login(self) -> None:
+        """Anonymous users should be redirected to the login page."""
+
+        response = self.client.get(self.import_home_url)
+
+        self.assertRedirects(
+            response,
+            f"{self.login_url}?next={self.import_home_url}",
+            fetch_redirect_response=False,
+        )
+
+        login_page = self.client.get(response.url)
+        self.assertEqual(login_page.status_code, 200)
+        self.assertContains(login_page, "Sign in")
+
+    def test_authenticated_user_can_access_import_home(self) -> None:
+        """After logging in, users should reach the import home page."""
+
+        logged_in = self.client.login(username=self.user.username, password=self.password)
+        self.assertTrue(logged_in)
+
+        response = self.client.get(self.import_home_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "PMKSY Data Import")
+
