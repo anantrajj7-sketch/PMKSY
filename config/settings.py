@@ -132,6 +132,16 @@ REST_FRAMEWORK = {
     ],
 }
 
+DATA_WIZARD = {
+    "AUTO_IMPORT_TASKS": (
+        "data_wizard.tasks.check_serializer",
+        "data_wizard.tasks.check_iter",
+        "data_wizard.tasks.check_columns",
+        "data_wizard.tasks.check_row_identifiers",
+        "pmksy.wizard_tasks.import_data",
+    )
+}
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
