@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from numbers import Integral
 from typing import Dict, Iterable, List, Tuple, Type
 
 from django import forms
@@ -102,6 +103,7 @@ def get_preview_rows(run: Run, limit: int = 5) -> Tuple[List[str], List[List[str
     loader = Loader(run)
 
     headers: List[str] = []
+    lookup_keys: List[str] = []
     rows: List[List[str]] = []
 
     try:
@@ -109,6 +111,13 @@ def get_preview_rows(run: Run, limit: int = 5) -> Tuple[List[str], List[List[str
 
         if hasattr(table, "field_map") and table.field_map:
             headers = list(table.field_map.keys())
+
+            def _normalize_lookup_key(key: object) -> object:
+                if isinstance(key, Integral) and not isinstance(key, bool):
+                    return str(key)
+                return key
+
+            lookup_keys = [_normalize_lookup_key(table.field_map[h]) for h in headers]
 
         iterator: Iterable = table
         for index, row in enumerate(iterator):
@@ -123,8 +132,19 @@ def get_preview_rows(run: Run, limit: int = 5) -> Tuple[List[str], List[List[str
 
             if not headers:
                 headers = list(data.keys())
+                lookup_keys = list(headers)
 
-            rows.append([str(data.get(column, "")) for column in headers])
+            row_values: List[str] = []
+            for column_index, column in enumerate(headers):
+                lookup_key = (
+                    lookup_keys[column_index]
+                    if column_index < len(lookup_keys)
+                    else column
+                )
+                value = data.get(lookup_key, data.get(column, ""))
+                row_values.append(str(value))
+
+            rows.append(row_values)
 
             if index + 1 >= limit:
                 break
