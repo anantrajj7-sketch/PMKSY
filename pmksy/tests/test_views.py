@@ -58,6 +58,16 @@ class PMKSYImportWizardPreviewTests(TestCase):
             any("Failed to generate preview" in message for message in logs.output)
         )
 
+    def test_upload_page_displays_field_guidance(self) -> None:
+        """Users should see guidance describing the expected import columns."""
+
+        response = self.client.get(
+            reverse("pmksy:wizard", kwargs={"wizard_slug": "land-holdings"})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "<code>farmer</code>", html=True)
+
 
 class AuthenticationFlowTests(TestCase):
     """Ensure unauthenticated users are prompted to log in before importing."""

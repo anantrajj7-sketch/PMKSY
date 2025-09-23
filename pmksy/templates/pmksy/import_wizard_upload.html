@@ -10,6 +10,15 @@
         a { color: #0b5ed7; text-decoration: none; }
         a:hover { text-decoration: underline; }
         .messages { color: #c00; }
+        .field-guidance { margin-top: 1.5rem; padding: 1rem; background: #f5f9ff; border-left: 4px solid #0b5ed7; }
+        .field-guidance p { margin: 0 0 0.5rem; }
+        .field-list { list-style: none; padding: 0; margin: 0; }
+        .field-list li { margin-bottom: 0.75rem; }
+        .field-title { font-weight: 600; display: block; }
+        .field-column { display: inline-block; margin-right: 0.5rem; }
+        code { background: #eef3ff; padding: 0.1rem 0.35rem; border-radius: 3px; }
+        .required-badge { color: #b02a37; font-weight: 600; margin-left: 0.35rem; }
+        .field-note { margin-top: 0.25rem; font-size: 0.9rem; color: #555; }
     </style>
 </head>
 <body>
@@ -22,6 +31,27 @@
                 <li>{{ message }}</li>
             {% endfor %}
         </ul>
+    {% endif %}
+
+    {% if expected_fields %}
+        <section class="field-guidance">
+            <h2>Prepare your file</h2>
+            <p>Include a header row with the following columns. Fields marked <span class="required-badge">Required</span> must be provided.</p>
+            <ul class="field-list">
+                {% for field in expected_fields %}
+                    <li>
+                        <span class="field-title">{{ field.label }}</span>
+                        <span class="field-column">Column name: <code>{{ field.name }}</code></span>
+                        {% if field.required %}
+                            <span class="required-badge">Required</span>
+                        {% endif %}
+                        {% if field.help_text %}
+                            <span class="field-note">{{ field.help_text }}</span>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        </section>
     {% endif %}
 
     <form method="post" enctype="multipart/form-data">

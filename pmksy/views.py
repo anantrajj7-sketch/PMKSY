@@ -182,6 +182,7 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
         if self.wizard_slug not in WIZARD_MAP:
             raise Http404("Unknown import wizard")
         self.wizard_config = WIZARD_MAP[self.wizard_slug]
+        self._expected_fields_cache = None
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
@@ -210,6 +211,7 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
             "wizard": self.wizard_config,
             "wizard_slug": self.wizard_slug,
             "form": self.form_class(),
+            "expected_fields": self._get_expected_fields(),
         }
         return render(request, self.upload_template_name, context)
 
@@ -221,7 +223,12 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
     def _handle_upload(self, request: HttpRequest) -> HttpResponse:
         form = self.form_class(request.POST, request.FILES)
         if not form.is_valid():
-            context = {"wizard": self.wizard_config, "form": form}
+            context = {
+                "wizard": self.wizard_config,
+                "wizard_slug": self.wizard_slug,
+                "form": form,
+                "expected_fields": self._get_expected_fields(),
+            }
             return render(request, self.upload_template_name, context)
 
         uploaded_file = form.cleaned_data["source_file"]
@@ -289,3 +296,35 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
         except Run.DoesNotExist as exc:  # pragma: no cover - defensive
             raise Http404("Import session not found") from exc
         return run
+
+    def _get_expected_fields(self) -> List[Dict[str, object]]:
+        cache = getattr(self, "_expected_fields_cache", None)
+        if cache is not None:
+            return cache
+
+        serializer_class = self.wizard_config.get("serializer")
+        expected_fields: List[Dict[str, object]] = []
+
+        if serializer_class:
+            serializer = serializer_class(context={"request": getattr(self, "request", None)})
+            for name, field in serializer.get_fields().items():
+                if getattr(field, "read_only", False):
+                    continue
+
+                model_field = getattr(field, "model_field", None)
+                if model_field is not None and getattr(model_field, "auto_created", False):
+                    continue
+
+                label = field.label or name.replace("_", " ").title()
+                help_text = getattr(field, "help_text", "") or ""
+                expected_fields.append(
+                    {
+                        "name": name,
+                        "label": label,
+                        "required": getattr(field, "required", False),
+                        "help_text": help_text,
+                    }
+                )
+
+        self._expected_fields_cache = expected_fields
+        return expected_fields
