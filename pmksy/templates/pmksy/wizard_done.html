@@ -6,6 +6,7 @@
 <h1>{{ wizard.name }} &ndash; Import Complete</h1>
 <div class="summary">
     <p>The uploaded file has been processed. Review the import run for additional details if needed.</p>
+    <p class="import-summary">{{ processed_count }} row{{ processed_count|pluralize }} processed, {{ skipped_count }} row{{ skipped_count|pluralize }} skipped.</p>
     <p>
         <a href="{{ run.get_absolute_url }}">View import status</a> |
         <a href="{% url 'pmksy:import-home' %}">Back to import home</a>
