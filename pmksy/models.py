@@ -443,3 +443,21 @@ class IrrigatedRainfed(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.crop
+
+
+class ImportRecordLabel(models.Model):
+    """Store persistent labels for data wizard records backed by UUID keys."""
+
+    record = models.OneToOneField(
+        "data_wizard.Record",
+        on_delete=models.CASCADE,
+        related_name="pmksy_label",
+    )
+    label = models.TextField()
+
+    class Meta:
+        verbose_name = "import record label"
+        verbose_name_plural = "import record labels"
+
+    def __str__(self) -> str:
+        return self.label

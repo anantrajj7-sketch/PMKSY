@@ -24,6 +24,8 @@ class ForeignKeyImportTests(TestCase):
             email="relationtester@example.com",
             password="password123",
         )
+        self.user.is_staff = True
+        self.user.save(update_fields=["is_staff"])
         self.client.force_login(self.user)
 
         self.farmer = Farmer.objects.create(name="Jane Doe")
@@ -68,11 +70,19 @@ Jane Doe,Small,1.5
         self.assertEqual(land_holding.farmer_id, self.farmer.farmer_id)
         self.assertEqual(land_holding.category, "Small")
 
-        run = Run.objects.get(pk=int(run_id))
+        run_pk = int(run_id)
+        run = Run.objects.get(pk=run_pk)
         record = run.record_set.get()
         self.assertTrue(record.success)
         self.assertEqual(record.content_type.model, "landholding")
         self.assertIn(record.object_id, {None, str(land_holding.land_id)})
+
+        records_response = self.client.get(
+            reverse("data_wizard:run-records", kwargs={"pk": run_pk})
+        )
+        self.assertEqual(records_response.status_code, 200)
+        self.assertContains(records_response, "Small")
+        self.assertNotContains(records_response, ">None<")
 
     def test_import_without_farmer_column_reports_error(self) -> None:
         """Omitting the farmer column should surface a helpful validation error."""
