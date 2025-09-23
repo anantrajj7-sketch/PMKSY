@@ -122,3 +122,35 @@ Small,1.5
             error_detail,
             {"farmer": ["Please provide a farmer name."]},
         )
+
+    def test_header_only_upload_shows_zero_row_summary(self) -> None:
+        """Header-only uploads should report zero processed and zero skipped rows."""
+
+        csv_content = "farmer,category,total_area_ha\n"
+        upload = SimpleUploadedFile(
+            "land_holdings_header_only.csv",
+            csv_content.encode("utf-8"),
+            content_type="text/csv",
+        )
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(
+            MEDIA_ROOT=media_root
+        ):
+            response = self.client.post(self.wizard_url, {"source_file": upload})
+
+            self.assertEqual(response.status_code, 302)
+            redirect_url = response["Location"]
+            run_id = parse_qs(urlparse(redirect_url).query)["run"][0]
+
+            confirm_response = self.client.post(
+                self.wizard_url, {"run_id": run_id}, follow=True
+            )
+
+        self.assertEqual(confirm_response.status_code, 200)
+        self.assertContains(confirm_response, "0 rows processed")
+        self.assertContains(confirm_response, "0 rows skipped")
+        self.assertFalse(LandHolding.objects.exists())
+
+        run = Run.objects.get(pk=int(run_id))
+        self.assertEqual(run.record_count, 0)
+        self.assertEqual(run.record_set.filter(success=False).count(), 0)

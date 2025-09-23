@@ -50,6 +50,7 @@ def _do_import(run):
         def rownum(i):
             return i
 
+    i = -1
     for i, row in enumerate(get_rows(run)):
         # Update state (for status() on view)
         run.send_progress(
@@ -83,7 +84,8 @@ def _do_import(run):
         _set_record_object(record, obj)
 
     # Send completion signal (in case any server handlers are registered)
-    status = {"current": i + 1, "total": rows, "skipped": skipped}
+    processed_rows = i + 1
+    status = {"current": processed_rows, "total": rows, "skipped": skipped}
     run.add_event("import_complete")
     run.record_count = run.record_set.filter(success=True).count()
     run.save()

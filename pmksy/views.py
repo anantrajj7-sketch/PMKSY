@@ -287,7 +287,19 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
             request,
             f"Successfully imported data for {self.wizard_config['name']}.",
         )
-        context = {"wizard": self.wizard_config, "run": run}
+
+        run.refresh_from_db()
+        processed_count = run.record_count
+        if processed_count is None:
+            processed_count = run.record_set.filter(success=True).count()
+        skipped_count = run.record_set.filter(success=False).count()
+
+        context = {
+            "wizard": self.wizard_config,
+            "run": run,
+            "processed_count": processed_count,
+            "skipped_count": skipped_count,
+        }
         return render(request, self.success_template_name, context)
 
     def _get_user_run(self, run_id: int) -> Run:
