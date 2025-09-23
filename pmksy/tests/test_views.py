@@ -86,6 +86,10 @@ class PMKSYImportWizardPreviewTests(TestCase):
         sheet.append(["name"])
         sheet.append(["Row 1"])
 
+        second_sheet = workbook.create_sheet(title="SheetTwo")
+        second_sheet.append(["name"])
+        second_sheet.append(["Row 2"])
+
         buffer = io.BytesIO()
         workbook.save(buffer)
         buffer.seek(0)
@@ -110,6 +114,48 @@ class PMKSYImportWizardPreviewTests(TestCase):
             "Select the worksheet to import from your workbook.",
             form.errors["sheet_name"],
         )
+
+        choices = form.fields["sheet_name"].choices
+        self.assertEqual(
+            choices,
+            [("SheetOne", "SheetOne"), ("SheetTwo", "SheetTwo")],
+        )
+
+        content = response.content.decode()
+        self.assertInHTML(
+            '<option value="" selected>Select a worksheet</option>', content
+        )
+        self.assertInHTML('<option value="SheetOne">SheetOne</option>', content)
+        self.assertInHTML('<option value="SheetTwo">SheetTwo</option>', content)
+
+        selected_sheet = choices[0][0]
+        existing_run_ids = list(Run.objects.values_list("pk", flat=True))
+
+        follow_up_buffer = io.BytesIO()
+        workbook.save(follow_up_buffer)
+        follow_up_buffer.seek(0)
+
+        follow_up_file = SimpleUploadedFile(
+            "selected-sheet.xlsx",
+            follow_up_buffer.getvalue(),
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+
+        follow_up_response = self.client.post(
+            self.wizard_url,
+            {"source_file": follow_up_file, "sheet_name": selected_sheet},
+            follow=True,
+        )
+
+        self.assertEqual(follow_up_response.status_code, 200)
+
+        new_runs = Run.objects.exclude(pk__in=existing_run_ids)
+        self.assertEqual(new_runs.count(), 1)
+        run = new_runs.get()
+        metadata = ImportRunMetadata.objects.get(run=run)
+        self.assertEqual(metadata.sheet_name, selected_sheet)
 
     def test_selected_sheet_populates_preview(self) -> None:
         """The preview should reflect the user-selected worksheet."""
