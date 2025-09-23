@@ -1,8 +1,10 @@
 """Serializers for PMKSY models."""
 
+from data_wizard.serializers import RecordSerializer as BaseRecordSerializer
 from rest_framework import serializers
 
 from . import models
+from .models import ImportRecordLabel
 
 
 class FarmerByNameField(serializers.RelatedField):
@@ -189,3 +191,15 @@ class IrrigatedRainfedSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.IrrigatedRainfed
         fields = "__all__"
+
+
+class ImportRecordSerializer(BaseRecordSerializer):
+    """Expose stored labels when a generic relation is unavailable."""
+
+    def get_object_label(self, instance):
+        if not instance.content_object:
+            try:
+                return instance.pmksy_label.label
+            except ImportRecordLabel.DoesNotExist:
+                pass
+        return super().get_object_label(instance)
