@@ -67,6 +67,7 @@ class PMKSYImportWizardPreviewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "<code>farmer</code>", html=True)
+        self.assertContains(response, "Farmer Registration ID")
 
 
 class AuthenticationFlowTests(TestCase):

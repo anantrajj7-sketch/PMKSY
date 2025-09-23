@@ -3,6 +3,12 @@ import uuid
 from django.db import models
 
 
+def generate_registration_id() -> str:
+    """Generate a stable registration identifier for farmers."""
+
+    return uuid.uuid4().hex
+
+
 class TimeStampedModel(models.Model):
     """Abstract base model that tracks creation and update timestamps."""
 
@@ -15,6 +21,13 @@ class TimeStampedModel(models.Model):
 
 class Farmer(TimeStampedModel):
     farmer_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    registration_id = models.CharField(
+        max_length=64,
+        unique=True,
+        null=True,
+        blank=True,
+        default=generate_registration_id,
+    )
     name = models.CharField(max_length=255)
     address = models.TextField(blank=True)
     village = models.CharField(max_length=255, blank=True)

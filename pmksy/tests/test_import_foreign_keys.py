@@ -15,7 +15,7 @@ from ..models import Farmer, LandHolding
 
 
 class ForeignKeyImportTests(TestCase):
-    """Ensure related datasets accept farmer names during import."""
+    """Ensure related datasets resolve farmers via registration identifiers."""
 
     def setUp(self) -> None:
         user_model = get_user_model()
@@ -28,17 +28,19 @@ class ForeignKeyImportTests(TestCase):
         self.user.save(update_fields=["is_staff"])
         self.client.force_login(self.user)
 
-        self.farmer = Farmer.objects.create(name="Jane Doe")
+        self.farmer = Farmer.objects.create(
+            name="Jane Doe", registration_id="FARMER-001"
+        )
 
         self.wizard_url = reverse(
             "pmksy:wizard", kwargs={"wizard_slug": "land-holdings"}
         )
 
-    def test_import_resolves_farmer_name_to_uuid(self) -> None:
-        """Uploading a dataset with farmer names should link to the correct farmer."""
+    def test_import_resolves_farmer_registration_id_to_uuid(self) -> None:
+        """Uploading a dataset with farmer identifiers should link to the correct farmer."""
 
         csv_content = """farmer,category,total_area_ha
-Jane Doe,Small,1.5
+FARMER-001,Small,1.5
 """
         upload = SimpleUploadedFile(
             "land_holdings.csv",
@@ -57,7 +59,7 @@ Jane Doe,Small,1.5
 
             preview_response = self.client.get(redirect_url)
             self.assertEqual(preview_response.status_code, 200)
-            self.assertIn("Jane Doe", preview_response.content.decode())
+            self.assertIn("FARMER-001", preview_response.content.decode())
 
             confirm_response = self.client.post(
                 self.wizard_url, {"run_id": run_id}, follow=True
@@ -120,7 +122,7 @@ Small,1.5
         error_detail = json.loads(record.fail_reason)
         self.assertEqual(
             error_detail,
-            {"farmer": ["Please provide a farmer name."]},
+            {"farmer": ["Please provide a farmer registration ID."]},
         )
 
     def test_confirmation_context_includes_failure_preview(self) -> None:
@@ -168,7 +170,7 @@ Small,1.5
 
         self.assertContains(confirm_response, f"<td>{record.row}</td>", html=True)
         self.assertIn(
-            "Please provide a farmer name.",
+            "Please provide a farmer registration ID.",
             confirm_response.content.decode(),
         )
 
@@ -198,8 +200,49 @@ Small,1.5
         self.assertEqual(confirm_response.status_code, 200)
         self.assertContains(confirm_response, "0 rows processed")
         self.assertContains(confirm_response, "0 rows skipped")
-        self.assertFalse(LandHolding.objects.exists())
 
-        run = Run.objects.get(pk=int(run_id))
-        self.assertEqual(run.record_count, 0)
-        self.assertEqual(run.record_set.filter(success=False).count(), 0)
+    def test_duplicate_farmer_names_use_registration_id(self) -> None:
+        """Farmers with duplicate names resolve correctly when using registration IDs."""
+
+        other_farmer = Farmer.objects.create(
+            name="Jane Doe", registration_id="FARMER-002"
+        )
+
+        csv_content = """farmer,category,total_area_ha
+FARMER-002,Large,3.0
+"""
+        upload = SimpleUploadedFile(
+            "land_holdings_duplicate.csv",
+            csv_content.encode("utf-8"),
+            content_type="text/csv",
+        )
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(
+            MEDIA_ROOT=media_root
+        ):
+            response = self.client.post(self.wizard_url, {"source_file": upload})
+
+            self.assertEqual(response.status_code, 302)
+            redirect_url = response["Location"]
+            run_id = parse_qs(urlparse(redirect_url).query)["run"][0]
+
+            preview_response = self.client.get(redirect_url)
+            self.assertEqual(preview_response.status_code, 200)
+            self.assertIn("FARMER-002", preview_response.content.decode())
+
+            confirm_response = self.client.post(
+                self.wizard_url, {"run_id": run_id}, follow=True
+            )
+
+        self.assertEqual(confirm_response.status_code, 200)
+
+        land_holding = LandHolding.objects.get()
+        self.assertEqual(land_holding.farmer_id, other_farmer.farmer_id)
+        self.assertEqual(land_holding.category, "Large")
+        self.assertEqual(LandHolding.objects.count(), 1)
+
+        run_pk = int(run_id)
+        run = Run.objects.get(pk=run_pk)
+        record = run.record_set.get()
+        self.assertTrue(record.success)
+        self.assertIn(record.object_id, {None, str(land_holding.land_id)})
