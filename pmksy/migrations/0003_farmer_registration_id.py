@@ -33,11 +33,22 @@ class Migration(migrations.Migration):
             name="registration_id",
             field=models.CharField(
                 blank=True,
+                max_length=64,
+                null=True,
+                unique=True,
+            ),
+            preserve_default=False,
+        ),
+        migrations.RunPython(populate_registration_ids, clear_registration_ids),
+        migrations.AlterField(
+            model_name="farmer",
+            name="registration_id",
+            field=models.CharField(
+                blank=True,
                 default=pmksy.models.generate_registration_id,
                 max_length=64,
                 null=True,
                 unique=True,
             ),
         ),
-        migrations.RunPython(populate_registration_ids, clear_registration_ids),
     ]
