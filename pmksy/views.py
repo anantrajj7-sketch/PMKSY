@@ -289,16 +289,26 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
         )
 
         run.refresh_from_db()
+        success_count = run.record_set.filter(success=True).count()
+        failed_records = run.record_set.filter(success=False)
+        failure_count = failed_records.count()
+        failure_preview = list(
+            failed_records.values("row", "fail_reason")[:5]
+        )
+
         processed_count = run.record_count
         if processed_count is None:
-            processed_count = run.record_set.filter(success=True).count()
-        skipped_count = run.record_set.filter(success=False).count()
+            processed_count = success_count + failure_count
+        skipped_count = failure_count
 
         context = {
             "wizard": self.wizard_config,
             "run": run,
             "processed_count": processed_count,
             "skipped_count": skipped_count,
+            "success_count": success_count,
+            "failure_count": failure_count,
+            "failure_preview": failure_preview,
         }
         return render(request, self.success_template_name, context)
 

@@ -12,4 +12,43 @@
         <a href="{% url 'pmksy:import-home' %}">Back to import home</a>
     </p>
 </div>
+{% if failure_count %}
+<div class="failure-summary">
+    <h2>Rows requiring attention</h2>
+    <p>
+        Some row{{ failure_count|pluralize }} could not be imported. Review the summary below and
+        <a href="{{ run.get_absolute_url }}">open the full import run</a> for complete details.
+    </p>
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th scope="col">Row</th>
+                <th scope="col">Reason</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for failure in failure_preview %}
+            <tr>
+                <td>{{ failure.row|default:"—" }}</td>
+                <td><pre>{{ failure.fail_reason }}</pre></td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="2">No additional error details are available.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if failure_count > failure_preview|length %}
+    <p class="additional-errors">
+        Showing the first {{ failure_preview|length }} of {{ failure_count }} failed row{{ failure_count|pluralize }}.
+        Visit the import run to review the remaining errors.
+    </p>
+    {% else %}
+    <p class="additional-errors">
+        Visit the import run for the complete error details.
+    </p>
+    {% endif %}
+</div>
+{% endif %}
 {% endblock %}
