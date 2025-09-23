@@ -1,5 +1,6 @@
 """Serializers for PMKSY models."""
 
+from django.db.models import Q
 from data_wizard.serializers import RecordSerializer as BaseRecordSerializer
 from rest_framework import serializers
 
@@ -8,18 +9,25 @@ from .models import ImportRecordLabel
 
 
 class FarmerByNameField(serializers.RelatedField):
-    """Serializer field that resolves farmers by their name."""
+    """Serializer field that resolves farmers by their registration identifier."""
 
     default_error_messages = {
-        "required": "Please provide a farmer name.",
-        "blank": "Please provide a farmer name.",
-        "does_not_exist": "Farmer with name '{value}' does not exist.",
-        "invalid": "Invalid farmer name provided.",
-        "multiple": "Multiple farmers found with name '{value}'.",
+        "required": "Please provide a farmer registration ID.",
+        "blank": "Please provide a farmer registration ID.",
+        "invalid": "Invalid farmer registration ID provided.",
+        "does_not_exist": "Farmer with registration ID '{value}' does not exist.",
+        "multiple": "Multiple farmers found with identifier '{value}'.",
+        "name_missing": "Farmer with name '{value}' does not exist.",
     }
 
     def __init__(self, **kwargs):
         kwargs.setdefault("queryset", models.Farmer.objects.all())
+        kwargs.setdefault("label", "Farmer Registration ID")
+        kwargs.setdefault(
+            "help_text",
+            "Provide the farmer registration ID generated from the farmer dataset. "
+            "Farmers missing an identifier will continue to match by name.",
+        )
         super().__init__(**kwargs)
 
     def to_internal_value(self, value):
@@ -38,16 +46,34 @@ class FarmerByNameField(serializers.RelatedField):
         if not isinstance(value, str):
             self.fail("invalid")
 
+        queryset = self.get_queryset()
+
         try:
-            return self.get_queryset().get(name=value)
-        except models.Farmer.DoesNotExist:  # pragma: no cover - simple reraised error
-            self.fail("does_not_exist", value=value)
-        except models.Farmer.MultipleObjectsReturned:  # pragma: no cover - simple reraised error
+            return queryset.get(registration_id=value)
+        except models.Farmer.MultipleObjectsReturned:  # pragma: no cover - defensive
             self.fail("multiple", value=value)
+        except models.Farmer.DoesNotExist:
+            pass
+
+        fallback_queryset = queryset.filter(name=value).filter(
+            Q(registration_id__isnull=True) | Q(registration_id="")
+        )
+
+        count = fallback_queryset.count()
+        if count == 1:
+            return fallback_queryset.get()
+        if count > 1:  # pragma: no cover - defensive safeguard
+            self.fail("multiple", value=value)
+
+        self.fail("name_missing", value=value)
 
     def to_representation(self, value):
         if isinstance(value, models.Farmer):
-            return value.name
+            if value.registration_id:
+                return value.registration_id
+            if value.name:
+                return value.name
+            return str(value.farmer_id)
         return str(value)
 
 
