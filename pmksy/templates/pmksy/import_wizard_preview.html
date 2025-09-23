@@ -6,14 +6,6 @@
 <h1>{{ wizard.name }} &ndash; Preview Data</h1>
 <p>Review the first few rows before confirming the import.</p>
 
-{% if messages %}
-    <ul class="messages">
-        {% for message in messages %}
-            <li>{{ message }}</li>
-        {% endfor %}
-    </ul>
-{% endif %}
-
 {% if rows %}
     <table>
         <thead>

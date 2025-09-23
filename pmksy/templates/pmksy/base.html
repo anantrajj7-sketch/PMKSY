@@ -21,6 +21,13 @@
     </header>
     <main class="page-content">
         <div class="container">
+            {% if messages %}
+                <ul class="messages-list">
+                    {% for message in messages %}
+                        <li class="messages {{ message.tags }}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
             {% block content %}{% endblock %}
         </div>
     </main>

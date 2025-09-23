@@ -83,15 +83,37 @@ a:hover {
     margin-bottom: 0.5rem;
 }
 
-.messages {
-    color: #b02a37;
+.messages-list {
     margin: 1rem 0;
     padding: 0;
     list-style: none;
 }
 
-.messages li {
-    margin-bottom: 0.25rem;
+.messages {
+    margin-bottom: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    background: #f8f9fb;
+    border-left: 4px solid transparent;
+    color: #212529;
+}
+
+.messages.success {
+    background: #e6f4ea;
+    border-color: #2e7d32;
+    color: #1b5e20;
+}
+
+.messages.warning {
+    background: #fff7e6;
+    border-color: #f57c00;
+    color: #8a4b07;
+}
+
+.messages.error {
+    background: #fdecea;
+    border-color: #d32f2f;
+    color: #7f1d1d;
 }
 
 form {

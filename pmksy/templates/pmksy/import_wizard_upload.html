@@ -6,14 +6,6 @@
 <h1>{{ wizard.name }} &ndash; Upload File</h1>
 <p>Upload a CSV, Excel, or JSON file exported from the PMKSY survey.</p>
 
-{% if messages %}
-    <ul class="messages">
-        {% for message in messages %}
-            <li>{{ message }}</li>
-        {% endfor %}
-    </ul>
-{% endif %}
-
 {% if expected_fields %}
     <section class="field-guidance">
         <h2>Prepare your file</h2>
