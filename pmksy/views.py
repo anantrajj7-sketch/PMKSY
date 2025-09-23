@@ -20,6 +20,9 @@ from data_wizard import InputNeeded, registry as data_wizard_registry
 from data_wizard.models import Run
 from data_wizard.sources.models import FileSource
 
+from openpyxl import load_workbook
+from openpyxl.utils.cell import get_column_letter
+
 from .importers import REGISTRATIONS
 from .models import ImportRunMetadata
 
@@ -297,12 +300,90 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
                 run=run,
                 defaults={"sheet_name": sheet_name},
             )
+            self._warn_for_merged_cells(request, file_source, sheet_name)
 
         logger.info("Created run %s for wizard %s", run.pk, self.wizard_slug)
 
         return redirect(
             f"{reverse('pmksy:wizard', kwargs={'wizard_slug': self.wizard_slug})}?run={run.pk}"
         )
+
+    def _warn_for_merged_cells(
+        self,
+        request: HttpRequest,
+        file_source: FileSource,
+        sheet_name: str,
+    ) -> None:
+        """Surface a warning when the selected sheet includes merged cells."""
+
+        file_field = getattr(file_source, "file", None)
+        if not file_field:
+            return
+
+        workbook_source = getattr(file_field, "path", None)
+        should_close_file = False
+
+        if not workbook_source:
+            try:
+                file_field.open("rb")
+            except Exception:  # pragma: no cover - storage backend edge case
+                logger.warning(
+                    "Unable to open uploaded workbook for merged-cell inspection",
+                    exc_info=True,
+                )
+                return
+            workbook_source = file_field
+            should_close_file = True
+
+        try:
+            workbook = load_workbook(
+                workbook_source,
+                data_only=True,
+            )
+        except Exception:  # pragma: no cover - defensive guard against bad files
+            logger.warning(
+                "Unable to read workbook when checking for merged cells",
+                exc_info=True,
+            )
+            if should_close_file:
+                file_field.close()
+            return
+
+        try:
+            try:
+                sheet = workbook[sheet_name]
+            except KeyError:
+                logger.warning(
+                    "Sheet '%s' missing while checking for merged cells", sheet_name
+                )
+                return
+
+            merged_ranges: List[str] = []
+            for merged_range in getattr(sheet.merged_cells, "ranges", []):
+                coord = getattr(merged_range, "coord", None)
+                if not coord:
+                    bounds = getattr(merged_range, "bounds", None)
+                    if bounds:
+                        min_col, min_row, max_col, max_row = bounds
+                        coord = (
+                            f"{get_column_letter(min_col)}{min_row}:"
+                            f"{get_column_letter(max_col)}{max_row}"
+                        )
+                merged_ranges.append(coord or str(merged_range))
+
+            if merged_ranges:
+                readable_ranges = ", ".join(merged_ranges)
+                messages.warning(
+                    request,
+                    (
+                        f"Sheet '{sheet_name}' contains merged cells: {readable_ranges}. "
+                        "Please unmerge these cells before importing."
+                    ),
+                )
+        finally:
+            workbook.close()
+            if should_close_file:
+                file_field.close()
 
     def _handle_confirmation(self, request: HttpRequest) -> HttpResponse:
         form = self.confirm_form_class(request.POST)
