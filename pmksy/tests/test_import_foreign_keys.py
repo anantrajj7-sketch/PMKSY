@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 from urllib.parse import parse_qs, urlparse
 
@@ -72,3 +73,42 @@ Jane Doe,Small,1.5
         self.assertTrue(record.success)
         self.assertEqual(record.content_type.model, "landholding")
         self.assertIn(record.object_id, {None, str(land_holding.land_id)})
+
+    def test_import_without_farmer_column_reports_error(self) -> None:
+        """Omitting the farmer column should surface a helpful validation error."""
+
+        csv_content = """category,total_area_ha
+Small,1.5
+"""
+        upload = SimpleUploadedFile(
+            "land_holdings_missing_farmer.csv",
+            csv_content.encode("utf-8"),
+            content_type="text/csv",
+        )
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(
+            MEDIA_ROOT=media_root
+        ):
+            response = self.client.post(self.wizard_url, {"source_file": upload})
+
+            self.assertEqual(response.status_code, 302)
+            redirect_url = response["Location"]
+            run_id = parse_qs(urlparse(redirect_url).query)["run"][0]
+
+            confirm_response = self.client.post(
+                self.wizard_url, {"run_id": run_id}, follow=True
+            )
+
+        self.assertEqual(confirm_response.status_code, 200)
+        self.assertIn("Import Complete", confirm_response.content.decode())
+
+        run = Run.objects.get(pk=int(run_id))
+        record = run.record_set.get()
+        self.assertFalse(record.success)
+        self.assertIsNotNone(record.fail_reason)
+
+        error_detail = json.loads(record.fail_reason)
+        self.assertEqual(
+            error_detail,
+            {"farmer": ["Please provide a farmer name."]},
+        )
