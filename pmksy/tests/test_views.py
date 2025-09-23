@@ -1,3 +1,4 @@
+import io
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -5,7 +6,12 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
+from openpyxl import Workbook
+
+from data_wizard.models import Run
+
 from ..views import PREVIEW_ERROR_MESSAGE
+from ..models import ImportRunMetadata
 
 
 class PMKSYImportWizardPreviewTests(TestCase):
@@ -44,7 +50,9 @@ class PMKSYImportWizardPreviewTests(TestCase):
         ):
             with self.assertLogs("pmksy.views", level="ERROR") as logs:
                 response = self.client.post(
-                    self.wizard_url, {"source_file": uploaded_file}, follow=True
+                    self.wizard_url,
+                    {"source_file": uploaded_file, "sheet_name": "Data"},
+                    follow=True,
                 )
 
         self.assertEqual(response.status_code, 200)
@@ -68,6 +76,80 @@ class PMKSYImportWizardPreviewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "<code>farmer</code>", html=True)
         self.assertContains(response, "Farmer Registration ID")
+
+    def test_workbook_upload_requires_sheet(self) -> None:
+        """Excel uploads must include the sheet selector."""
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "SheetOne"
+        sheet.append(["name"])
+        sheet.append(["Row 1"])
+
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        buffer.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            "missing-sheet.xlsx",
+            buffer.getvalue(),
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+
+        response = self.client.post(
+            self.wizard_url,
+            {"source_file": uploaded_file, "sheet_name": ""},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context["form"]
+        self.assertIn("sheet_name", form.errors)
+        self.assertIn(
+            "Select the worksheet to import from your workbook.",
+            form.errors["sheet_name"],
+        )
+
+    def test_selected_sheet_populates_preview(self) -> None:
+        """The preview should reflect the user-selected worksheet."""
+
+        workbook = Workbook()
+        first_sheet = workbook.active
+        first_sheet.title = "Overview"
+        first_sheet.append(["name", "value"])
+        first_sheet.append(["ignored", "0"])
+
+        second_sheet = workbook.create_sheet(title="SurveyData")
+        second_sheet.append(["name", "value"])
+        second_sheet.append(["target", "42"])
+
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        buffer.seek(0)
+
+        uploaded_file = SimpleUploadedFile(
+            "survey.xlsx",
+            buffer.getvalue(),
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+
+        response = self.client.post(
+            self.wizard_url,
+            {"source_file": uploaded_file, "sheet_name": "SurveyData"},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.context["rows"]
+        self.assertTrue(any("target" in row for row in rows))
+        self.assertFalse(any("ignored" in row for row in rows))
+
+        run = Run.objects.latest("pk")
+        metadata = ImportRunMetadata.objects.get(run=run)
+        self.assertEqual(metadata.sheet_name, "SurveyData")
 
 
 class AuthenticationFlowTests(TestCase):

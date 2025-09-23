@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from numbers import Integral
+from pathlib import Path
 from typing import Dict, Iterable, List, Tuple, Type
 
 from django import forms
@@ -20,6 +21,7 @@ from data_wizard.models import Run
 from data_wizard.sources.models import FileSource
 
 from .importers import REGISTRATIONS
+from .models import ImportRunMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +72,55 @@ except (ImportError, AttributeError):  # pragma: no cover - graceful fallback
 
 
 class FileUploadForm(forms.Form):
+    """Collect the upload, plus optional workbook sheet selection."""
+
+    _WORKBOOK_EXTENSIONS = {".xls", ".xlsx"}
+
     source_file = forms.FileField(
         label="Upload data file",
         help_text="Supported formats: CSV, XLSX, XLS, JSON",
     )
+    sheet_name = forms.CharField(
+        label="Sheet name",
+        required=False,
+        help_text=(
+            "For Excel workbooks, provide the sheet to import. Leave blank for "
+            "CSV or JSON files."
+        ),
+    )
+
+    def clean_sheet_name(self) -> str:
+        sheet_name = self.cleaned_data.get("sheet_name", "")
+        if isinstance(sheet_name, str):
+            return sheet_name.strip()
+        return ""
+
+    def clean(self) -> Dict[str, object]:
+        cleaned_data = super().clean()
+        uploaded_file = cleaned_data.get("source_file")
+        sheet_name = cleaned_data.get("sheet_name")
+
+        if uploaded_file and self._is_workbook(uploaded_file):
+            if not sheet_name:
+                self.add_error(
+                    "sheet_name",
+                    "Select the worksheet to import from your workbook.",
+                )
+
+        return cleaned_data
+
+    def _is_workbook(self, uploaded_file: forms.FileField) -> bool:
+        """Return True when the uploaded file appears to be a workbook."""
+
+        content_type = getattr(uploaded_file, "content_type", "") or ""
+        normalized_type = content_type.lower()
+
+        if "spreadsheet" in normalized_type or "excel" in normalized_type:
+            return True
+
+        filename = getattr(uploaded_file, "name", "")
+        extension = Path(filename).suffix.lower()
+        return extension in self._WORKBOOK_EXTENSIONS
 
 
 class ConfirmImportForm(forms.Form):
@@ -243,6 +290,13 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
             content_object=file_source,
             serializer=self.wizard_config["name"],
         )
+
+        sheet_name = form.cleaned_data.get("sheet_name", "")
+        if sheet_name:
+            ImportRunMetadata.objects.update_or_create(
+                run=run,
+                defaults={"sheet_name": sheet_name},
+            )
 
         logger.info("Created run %s for wizard %s", run.pk, self.wizard_slug)
 

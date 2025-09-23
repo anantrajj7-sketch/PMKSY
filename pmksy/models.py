@@ -1,5 +1,6 @@
 import uuid
 
+from data_wizard.models import Run
 from django.db import models
 
 
@@ -17,6 +18,28 @@ class TimeStampedModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class ImportRunMetadata(TimeStampedModel):
+    """Per-run configuration collected during the upload step."""
+
+    run = models.OneToOneField(
+        Run,
+        on_delete=models.CASCADE,
+        related_name="pmksy_metadata",
+    )
+    sheet_name = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = "pmksy_import_run_metadata"
+        verbose_name = "import run metadata"
+        verbose_name_plural = "import run metadata"
+
+    def __str__(self) -> str:  # pragma: no cover - human readable helper
+        base = f"Run {self.run_id}" if self.run_id else "Unbound run"
+        if self.sheet_name:
+            return f"{base} – sheet '{self.sheet_name}'"
+        return base
 
 
 class Farmer(TimeStampedModel):
