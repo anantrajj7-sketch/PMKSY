@@ -83,9 +83,11 @@ class FileUploadForm(forms.Form):
         label="Upload data file",
         help_text="Supported formats: CSV, XLSX, XLS, JSON",
     )
-    sheet_name = forms.CharField(
+    sheet_name = forms.ChoiceField(
         label="Sheet name",
         required=False,
+        choices=(),
+        widget=forms.Select,
         help_text=(
             "For Excel workbooks, provide the sheet to import. Leave blank for "
             "CSV or JSON files."
@@ -272,7 +274,26 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
 
     def _handle_upload(self, request: HttpRequest) -> HttpResponse:
         form = self.form_class(request.POST, request.FILES)
+        uploaded_file = request.FILES.get("source_file")
+        sheet_choices: List[Tuple[str, str]] = []
+
+        if uploaded_file and form._is_workbook(uploaded_file):
+            sheet_names = self._collect_workbook_sheetnames(uploaded_file)
+            if sheet_names:
+                sheet_choices = [(name, name) for name in sheet_names]
+
+        if not sheet_choices:
+            raw_sheet = request.POST.get("sheet_name")
+            if isinstance(raw_sheet, str) and raw_sheet:
+                display_label = raw_sheet.strip() or raw_sheet
+                sheet_choices = [(raw_sheet, display_label)]
+
+        if sheet_choices:
+            form.fields["sheet_name"].choices = sheet_choices
+
         if not form.is_valid():
+            if sheet_choices:
+                form.fields["sheet_name"].choices = sheet_choices
             context = {
                 "wizard": self.wizard_config,
                 "wizard_slug": self.wizard_slug,
@@ -307,6 +328,33 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
         return redirect(
             f"{reverse('pmksy:wizard', kwargs={'wizard_slug': self.wizard_slug})}?run={run.pk}"
         )
+
+    def _collect_workbook_sheetnames(self, uploaded_file) -> List[str]:
+        """Return the list of sheet names for the uploaded workbook."""
+
+        workbook = None
+        sheet_names: List[str] = []
+
+        try:
+            if hasattr(uploaded_file, "seek"):
+                uploaded_file.seek(0)
+            workbook = load_workbook(uploaded_file, read_only=True, data_only=True)
+            sheet_names = list(getattr(workbook, "sheetnames", []))
+        except Exception:  # pragma: no cover - defensive guard against bad files
+            logger.debug("Unable to enumerate workbook sheets", exc_info=True)
+        finally:
+            if workbook is not None:
+                try:
+                    workbook.close()
+                except Exception:  # pragma: no cover - best-effort cleanup
+                    logger.debug("Failed to close workbook after inspection", exc_info=True)
+            if hasattr(uploaded_file, "seek"):
+                try:
+                    uploaded_file.seek(0)
+                except Exception:  # pragma: no cover - best-effort reset
+                    logger.debug("Unable to reset uploaded workbook pointer", exc_info=True)
+
+        return sheet_names
 
     def _warn_for_merged_cells(
         self,
