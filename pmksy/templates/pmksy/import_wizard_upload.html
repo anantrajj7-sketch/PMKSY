@@ -37,7 +37,46 @@
 
 <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
-    {{ form.as_p }}
+    {% if form.non_field_errors %}
+        <div class="form-errors">
+            <ul>
+                {% for error in form.non_field_errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <div class="form-row{% if form.source_file.errors %} has-error{% endif %}">
+        {{ form.source_file.label_tag }}
+        {{ form.source_file }}
+        {% if form.source_file.help_text %}
+            <p class="helptext">{{ form.source_file.help_text }}</p>
+        {% endif %}
+        {% if form.source_file.errors %}
+            <ul class="errorlist">
+                {% for error in form.source_file.errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </div>
+
+    <div class="form-row{% if form.sheet_name.errors %} has-error{% endif %}">
+        {{ form.sheet_name.label_tag }}
+        {{ form.sheet_name }}
+        {% if form.sheet_name.help_text %}
+            <p class="helptext">{{ form.sheet_name.help_text }}</p>
+        {% endif %}
+        {% if form.sheet_name.errors %}
+            <ul class="errorlist">
+                {% for error in form.sheet_name.errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </div>
+
     <div class="actions">
         <button type="submit">Upload &amp; Preview</button>
         <a href="{% url 'pmksy:import-home' %}">Back to all imports</a>
