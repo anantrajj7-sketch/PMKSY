@@ -1,9 +1,12 @@
+import csv
 import io
+import tempfile
 from unittest import mock
+from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from openpyxl import Workbook
@@ -11,7 +14,7 @@ from openpyxl import Workbook
 from data_wizard.models import Run
 
 from ..views import PREVIEW_ERROR_MESSAGE
-from ..models import ImportRunMetadata
+from ..models import Farmer, ImportRunMetadata
 
 
 class PMKSYImportWizardPreviewTests(TestCase):
@@ -238,3 +241,89 @@ class AuthenticationFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "PMKSY Data Import")
 
+
+class FarmerRegistrationDownloadTests(TestCase):
+    """Verify the farmer registration download endpoint exposes imported IDs."""
+
+    def setUp(self) -> None:
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username="registrationtester",
+            email="registrationtester@example.com",
+            password="password123",
+        )
+        self.client.force_login(self.user)
+        self.wizard_url = reverse("pmksy:wizard", kwargs={"wizard_slug": "farmers"})
+
+    def test_download_includes_imported_registration_ids(self) -> None:
+        """After importing farmers, users can download registration identifiers."""
+
+        csv_payload = """name,village,district,contact_no
+Alpha Farmer,Example Village,Example District,1111111111
+Beta Farmer,Another Village,Another District,2222222222
+"""
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(
+            MEDIA_ROOT=media_root
+        ):
+            upload = SimpleUploadedFile(
+                "farmers.csv",
+                csv_payload.encode("utf-8"),
+                content_type="text/csv",
+            )
+            response = self.client.post(self.wizard_url, {"source_file": upload})
+
+            self.assertEqual(response.status_code, 302)
+            preview_url = response["Location"]
+            run_id = int(parse_qs(urlparse(preview_url).query)["run"][0])
+
+            preview_response = self.client.get(preview_url)
+            self.assertEqual(preview_response.status_code, 200)
+
+            confirm_response = self.client.post(
+                self.wizard_url, {"run_id": run_id}, follow=True
+            )
+            self.assertEqual(confirm_response.status_code, 200)
+
+            download_url = reverse(
+                "pmksy:farmer-registration-download", kwargs={"run_id": run_id}
+            )
+            download_response = self.client.get(download_url)
+
+        self.assertEqual(download_response.status_code, 200)
+        self.assertEqual(download_response["Content-Type"], "text/csv")
+        self.assertIn(
+            f"farmers-run-{run_id}", download_response["Content-Disposition"]
+        )
+
+        reader = csv.DictReader(download_response.content.decode("utf-8").splitlines())
+        self.assertEqual(
+            reader.fieldnames,
+            ["registration_id", "name", "village", "district", "contact_no"],
+        )
+
+        rows = list(reader)
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(row["registration_id"] for row in rows))
+
+        expected_records = {
+            (
+                farmer.registration_id,
+                farmer.name,
+                farmer.village,
+                farmer.district,
+                farmer.contact_no,
+            )
+            for farmer in Farmer.objects.order_by("created_at", "registration_id")
+        }
+        csv_records = {
+            (
+                row["registration_id"],
+                row["name"],
+                row["village"],
+                row["district"],
+                row["contact_no"],
+            )
+            for row in rows
+        }
+        self.assertSetEqual(csv_records, expected_records)

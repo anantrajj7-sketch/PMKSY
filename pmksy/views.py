@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import csv
 import logging
+from collections import defaultdict, deque
 from numbers import Integral
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple, Type
+from typing import Deque, Dict, Iterable, List, Optional, Tuple, Type
 
 from django import forms
 from django.contrib import messages
@@ -13,18 +15,20 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.text import slugify
 from django.views import View
 
 from data_wizard import InputNeeded, registry as data_wizard_registry
 from data_wizard.models import Run
 from data_wizard.sources.models import FileSource
+from data_wizard.tasks import get_rows
 
 from openpyxl import load_workbook
 from openpyxl.utils.cell import get_column_letter
 
 from .importers import REGISTRATIONS
-from .models import ImportRunMetadata
+from .models import Farmer, ImportRunMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +210,17 @@ def get_preview_rows(run: Run, limit: int = 5) -> Tuple[List[str], List[List[str
     return headers, rows
 
 
+class RunAccessMixin:
+    """Provide helpers for retrieving data wizard runs owned by the user."""
+
+    def _get_user_run(self, run_id: int) -> Run:
+        try:
+            run = Run.objects.get(pk=run_id, user=self.request.user)
+        except Run.DoesNotExist as exc:  # pragma: no cover - defensive
+            raise Http404("Import session not found") from exc
+        return run
+
+
 class ImportHomeView(LoginRequiredMixin, View):
     template_name = "pmksy/home.html"
 
@@ -221,7 +236,7 @@ class ImportHomeView(LoginRequiredMixin, View):
         return render(request, self.template_name, context)
 
 
-class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
+class PMKSYImportWizard(LoginRequiredMixin, RunAccessMixin, BaseImportWizard):
     upload_template_name = "pmksy/import_wizard_upload.html"
     preview_template_name = "pmksy/import_wizard_preview.html"
     success_template_name = "pmksy/wizard_done.html"
@@ -486,6 +501,7 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
 
         context = {
             "wizard": self.wizard_config,
+            "wizard_slug": self.wizard_slug,
             "run": run,
             "processed_count": processed_count,
             "skipped_count": skipped_count,
@@ -494,13 +510,6 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
             "failure_preview": failure_preview,
         }
         return render(request, self.success_template_name, context)
-
-    def _get_user_run(self, run_id: int) -> Run:
-        try:
-            run = Run.objects.get(pk=run_id, user=self.request.user)
-        except Run.DoesNotExist as exc:  # pragma: no cover - defensive
-            raise Http404("Import session not found") from exc
-        return run
 
     def _get_expected_fields(self) -> List[Dict[str, object]]:
         cache = getattr(self, "_expected_fields_cache", None)
@@ -533,3 +542,133 @@ class PMKSYImportWizard(LoginRequiredMixin, BaseImportWizard):
 
         self._expected_fields_cache = expected_fields
         return expected_fields
+
+
+class FarmerRegistrationDownloadView(LoginRequiredMixin, RunAccessMixin, View):
+    """Stream farmer registration IDs for a completed import run."""
+
+    CSV_HEADERS = ["registration_id", "name", "village", "district", "contact_no"]
+
+    def get(self, request: HttpRequest, run_id: int, *args, **kwargs) -> HttpResponse:
+        run = self._get_user_run(run_id)
+
+        if run.serializer != "Farmers":
+            raise Http404("Farmer registration data not available for this import.")
+
+        success_records = list(
+            run.record_set.filter(success=True)
+            .select_related("pmksy_label")
+            .order_by("row")
+        )
+
+        if not success_records:
+            raise Http404("No farmer registrations available for download.")
+
+        table = run.load_iter()
+        start_row = getattr(table, "start_row", 0)
+
+        row_mapping: Dict[int, Dict[str, object]] = {}
+        for index, row_data in enumerate(get_rows(run)):
+            row_number = index + start_row
+            if isinstance(row_data, dict):
+                row_mapping[row_number] = row_data
+
+        import_start: Optional[object] = (
+            run.log.filter(event="do_import").values_list("date", flat=True).first()
+        )
+        import_end: Optional[object] = (
+            run.log.filter(event="import_complete").values_list("date", flat=True).last()
+        )
+        if import_end is None:
+            import_end = timezone.now()
+
+        new_farmer_filters = {}
+        if import_start is not None:
+            new_farmer_filters["created_at__gte"] = import_start
+        if import_end is not None:
+            new_farmer_filters["created_at__lte"] = import_end
+
+        if new_farmer_filters:
+            new_farmers = list(
+                Farmer.objects.filter(**new_farmer_filters).order_by("created_at", "farmer_id")
+            )
+        else:
+            new_farmers = []
+
+        new_farmers_by_name: Dict[str, Deque[Farmer]] = defaultdict(deque)
+        for farmer in new_farmers:
+            new_farmers_by_name[self._normalize_value(farmer.name)].append(farmer)
+
+        unused_new_farmers: Deque[Farmer] = deque(new_farmers)
+        used_farmer_ids = set()
+        rows: List[List[str]] = []
+
+        for record in success_records:
+            row_data = row_mapping.get(record.row, {})
+            registration_value = self._normalize_value(row_data.get("registration_id"))
+
+            farmer: Optional[Farmer] = None
+            if registration_value:
+                farmer = Farmer.objects.filter(registration_id=registration_value).first()
+
+            if farmer is None:
+                label_source = row_data.get("name") if isinstance(row_data, dict) else None
+                if not label_source and getattr(record, "pmksy_label", None) is not None:
+                    label_source = record.pmksy_label.label
+                name_value = self._normalize_value(label_source)
+
+                if name_value:
+                    queue = new_farmers_by_name.get(name_value)
+                    while queue:
+                        candidate = queue.popleft()
+                        if candidate.pk not in used_farmer_ids:
+                            farmer = candidate
+                            break
+
+                if farmer is None and unused_new_farmers:
+                    while unused_new_farmers:
+                        candidate = unused_new_farmers.popleft()
+                        if candidate.pk not in used_farmer_ids:
+                            farmer = candidate
+                            break
+
+                if farmer is None and name_value:
+                    candidates = (
+                        Farmer.objects.filter(name=name_value)
+                        .order_by("created_at", "farmer_id")
+                    )
+                    for candidate in candidates:
+                        if candidate.pk not in used_farmer_ids:
+                            farmer = candidate
+                            break
+
+            if farmer is None:
+                continue
+
+            used_farmer_ids.add(farmer.pk)
+            rows.append(
+                [
+                    self._normalize_value(farmer.registration_id),
+                    self._normalize_value(farmer.name),
+                    self._normalize_value(farmer.village),
+                    self._normalize_value(farmer.district),
+                    self._normalize_value(farmer.contact_no),
+                ]
+            )
+
+        response = HttpResponse(content_type="text/csv")
+        filename = f"farmers-run-{run.pk}-registrations.csv"
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        writer = csv.writer(response)
+        writer.writerow(self.CSV_HEADERS)
+        for row in rows:
+            writer.writerow(row)
+        return response
+
+    @staticmethod
+    def _normalize_value(value: object) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return str(value).strip()
