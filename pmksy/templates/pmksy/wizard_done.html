@@ -11,6 +11,13 @@
         <a href="{{ run.get_absolute_url }}">View import status</a> |
         <a href="{% url 'pmksy:import-home' %}">Back to import home</a>
     </p>
+    {% if wizard_slug == "farmers" %}
+    <p class="download-registrations">
+        <a href="{% url 'pmksy:farmer-registration-download' run.pk %}">
+            Download farmer registration IDs
+        </a>
+    </p>
+    {% endif %}
 </div>
 {% if failure_count %}
 <div class="failure-summary">
