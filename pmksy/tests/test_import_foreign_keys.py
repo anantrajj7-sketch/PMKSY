@@ -123,6 +123,55 @@ Small,1.5
             {"farmer": ["Please provide a farmer name."]},
         )
 
+    def test_confirmation_context_includes_failure_preview(self) -> None:
+        """Failed rows should be exposed in the confirmation context and template."""
+
+        csv_content = """category,total_area_ha
+Small,1.5
+"""
+        upload = SimpleUploadedFile(
+            "land_holdings_missing_farmer.csv",
+            csv_content.encode("utf-8"),
+            content_type="text/csv",
+        )
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(
+            MEDIA_ROOT=media_root
+        ):
+            response = self.client.post(self.wizard_url, {"source_file": upload})
+
+            self.assertEqual(response.status_code, 302)
+            redirect_url = response["Location"]
+            run_id = parse_qs(urlparse(redirect_url).query)["run"][0]
+
+            confirm_response = self.client.post(
+                self.wizard_url, {"run_id": run_id}, follow=True
+            )
+
+        self.assertEqual(confirm_response.status_code, 200)
+
+        context = confirm_response.context
+        self.assertIsNotNone(context)
+        self.assertEqual(context["success_count"], 0)
+        self.assertEqual(context["failure_count"], 1)
+
+        failure_preview = context["failure_preview"]
+        self.assertIsInstance(failure_preview, list)
+        self.assertGreaterEqual(len(failure_preview), 1)
+
+        run = Run.objects.get(pk=int(run_id))
+        record = run.record_set.get()
+
+        first_failure = failure_preview[0]
+        self.assertEqual(first_failure["row"], record.row)
+        self.assertEqual(first_failure["fail_reason"], record.fail_reason)
+
+        self.assertContains(confirm_response, f"<td>{record.row}</td>", html=True)
+        self.assertIn(
+            "Please provide a farmer name.",
+            confirm_response.content.decode(),
+        )
+
     def test_header_only_upload_shows_zero_row_summary(self) -> None:
         """Header-only uploads should report zero processed and zero skipped rows."""
 
