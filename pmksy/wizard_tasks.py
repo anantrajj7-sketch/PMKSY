@@ -16,6 +16,8 @@ from data_wizard.tasks import (
     wizard_task,
 )
 
+from .models import ImportRecordLabel
+
 
 @wizard_task(label="Importing Data...", url_path="data", use_async=True)
 def import_data(run):
@@ -48,6 +50,7 @@ def _do_import(run):
         def rownum(i):
             return i
 
+    i = -1
     for i, row in enumerate(get_rows(run)):
         # Update state (for status() on view)
         run.send_progress(
@@ -79,10 +82,10 @@ def _do_import(run):
             fail_reason=fail_reason,
         )
         _set_record_object(record, obj)
-        record.save()
 
     # Send completion signal (in case any server handlers are registered)
-    status = {"current": i + 1, "total": rows, "skipped": skipped}
+    processed_rows = i + 1
+    status = {"current": processed_rows, "total": rows, "skipped": skipped}
     run.add_event("import_complete")
     run.record_count = run.record_set.filter(success=True).count()
     run.save()
@@ -95,7 +98,15 @@ def _do_import(run):
 def _set_record_object(record, obj: Any) -> None:
     """Attach ``obj`` to ``record`` while gracefully handling UUID keys."""
 
-    if not isinstance(obj, models.Model):
+    if record.pk is None:
+        record.save()
+
+    if not record.success or not isinstance(obj, models.Model):
+        ImportRecordLabel.objects.filter(record=record).delete()
+        if record.content_type_id or record.object_id:
+            record.content_type = None
+            record.object_id = None
+            record.save(update_fields=["content_type", "object_id"])
         return
 
     if _has_uuid_primary_key(obj):
@@ -103,8 +114,15 @@ def _set_record_object(record, obj: Any) -> None:
             obj, for_concrete_model=False
         )
         record.object_id = None
+        record.save(update_fields=["content_type", "object_id"])
+        ImportRecordLabel.objects.update_or_create(
+            record=record,
+            defaults={"label": str(obj)},
+        )
     else:
         record.content_object = obj
+        record.save(update_fields=["content_type", "object_id"])
+        ImportRecordLabel.objects.filter(record=record).delete()
 
 
 def _has_uuid_primary_key(obj: models.Model) -> bool:

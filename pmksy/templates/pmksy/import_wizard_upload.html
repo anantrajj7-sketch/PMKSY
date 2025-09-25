@@ -1,36 +1,96 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>{{ wizard.name }} Import</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 2rem; }
-        form { margin-top: 1.5rem; }
-        .actions { margin-top: 1rem; }
-        a { color: #0b5ed7; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .messages { color: #c00; }
-    </style>
-</head>
-<body>
-    <h1>{{ wizard.name }} &ndash; Upload File</h1>
-    <p>Upload a CSV, Excel, or JSON file exported from the PMKSY survey.</p>
+{% extends "pmksy/base.html" %}
 
-    {% if messages %}
-        <ul class="messages">
-            {% for message in messages %}
-                <li>{{ message }}</li>
+{% block title %}{{ wizard.name }} Import{% endblock %}
+
+{% block content %}
+<h1>{{ wizard.name }} &ndash; Upload File</h1>
+<p>Upload a CSV, Excel, or JSON file exported from the PMKSY survey.</p>
+
+{% if messages %}
+    <ul class="messages">
+        {% for message in messages %}
+            <li>{{ message }}</li>
+        {% endfor %}
+    </ul>
+{% endif %}
+
+{% if expected_fields %}
+    <section class="field-guidance">
+        <h2>Prepare your file</h2>
+        <p>Include a header row with the following columns. Fields marked <span class="required-badge">Required</span> must be provided.</p>
+        <ul class="field-list">
+            {% for field in expected_fields %}
+                <li>
+                    <span class="field-title">{{ field.label }}</span>
+                    <span class="field-column">Column name: <code>{{ field.name }}</code></span>
+                    {% if field.required %}
+                        <span class="required-badge">Required</span>
+                    {% endif %}
+                    {% if field.help_text %}
+                        <span class="field-note">{{ field.help_text }}</span>
+                    {% endif %}
+                </li>
             {% endfor %}
         </ul>
+    </section>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+        <div class="form-errors">
+            <ul>
+                {% for error in form.non_field_errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
     {% endif %}
 
-    <form method="post" enctype="multipart/form-data">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <div class="actions">
-            <button type="submit">Upload &amp; Preview</button>
-            <a href="{% url 'pmksy:import-home' %}">Back to all imports</a>
-        </div>
-    </form>
-</body>
-</html>
+    <div class="form-row{% if form.source_file.errors %} has-error{% endif %}">
+        {{ form.source_file.label_tag }}
+        {{ form.source_file }}
+        {% if form.source_file.help_text %}
+            <p class="helptext">{{ form.source_file.help_text }}</p>
+        {% endif %}
+        {% if form.source_file.errors %}
+            <ul class="errorlist">
+                {% for error in form.source_file.errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </div>
+
+    <div class="form-row{% if form.sheet_name.errors %} has-error{% endif %}">
+        {% with field=form.sheet_name %}
+            {{ field.label_tag }}
+            {% with current_value=field.value %}
+                <select name="{{ field.html_name }}" id="{{ field.id_for_label }}">
+                    <option value=""{% if not current_value %} selected{% endif %}>Select a worksheet</option>
+                    {% for value, label in field.field.choices %}
+                        {% if value %}
+                            <option value="{{ value }}"{% if value == current_value %} selected{% endif %}>{{ label }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            {% endwith %}
+            {% if field.help_text %}
+                <p class="helptext">{{ field.help_text }}</p>
+            {% endif %}
+            {% if field.errors %}
+                <ul class="errorlist">
+                    {% for error in field.errors %}
+                        <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <div class="actions">
+        <button type="submit">Upload &amp; Preview</button>
+        <a href="{% url 'pmksy:import-home' %}">Back to all imports</a>
+    </div>
+</form>
+{% endblock %}
