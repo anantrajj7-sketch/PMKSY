@@ -5,6 +5,8 @@ This document lists the schema for the PMKSY socio-economic survey form, convert
 | Column Name | Table Name | Data Type | Relation |
 |-------------|------------|-----------|----------|
 | farmer_id | farmers | UUID (PK) | – |
+| registration_id | farmers | TEXT | – |
+| survey_serial_number | farmers | TEXT | – |
 | name | farmers | TEXT | – |
 | address | farmers | TEXT | – |
 | village | farmers | TEXT | – |
@@ -32,10 +34,13 @@ This document lists the schema for the PMKSY socio-economic survey form, convert
 | category | land_holdings | TEXT | – |
 | total_area_ha | land_holdings | NUMERIC | – |
 | irrigated_area_ha | land_holdings | NUMERIC | – |
+| cultivated_area_ha | land_holdings | NUMERIC | – |
+| waste_land_area_ha | land_holdings | NUMERIC | – |
 | irrigation_source | land_holdings | TEXT | – |
 | irrigation_no | land_holdings | TEXT | – |
 | irrigation_latitude | land_holdings | DOUBLE PRECISION | – |
 | irrigation_longitude | land_holdings | DOUBLE PRECISION | – |
+| soil_type | land_holdings | TEXT | – |
 | soil_details | land_holdings | TEXT | – |
 
 ---
@@ -106,6 +111,8 @@ This document lists the schema for the PMKSY socio-economic survey form, convert
 | depth | water_management | NUMERIC | – |
 | energy_cost | water_management | NUMERIC | – |
 | labour_charge | water_management | NUMERIC | – |
+| water_availability | water_management | TEXT | – |
+| farm_pond_available | water_management | BOOLEAN | – |
 
 ---
 
@@ -131,11 +138,11 @@ This document lists the schema for the PMKSY socio-economic survey form, convert
 | farmer_id | nutrient_management | UUID (FK) | → farmers.farmer_id |
 | season | nutrient_management | TEXT | – |
 | crop_name | nutrient_management | TEXT | – |
-| fym_kg | nutrient_management | NUMERIC | – |
-| nitrogen_kg | nutrient_management | NUMERIC | – |
-| phosphate_kg | nutrient_management | NUMERIC | – |
-| gromer_kg | nutrient_management | NUMERIC | – |
-| other_fertilizer | nutrient_management | TEXT | – |
+| fym_compost_kg_ha | nutrient_management | NUMERIC | – |
+| urea_kg_ha | nutrient_management | NUMERIC | – |
+| dap_kg_ha | nutrient_management | NUMERIC | – |
+| mop_kg_ha | nutrient_management | NUMERIC | – |
+| other_fertilizer_kg_ha | nutrient_management | NUMERIC | – |
 
 ---
 
@@ -184,10 +191,14 @@ This document lists the schema for the PMKSY socio-economic survey form, convert
 |-------------|------------|-----------|----------|
 | migration_id | migration | UUID (PK) | – |
 | farmer_id | migration | UUID (FK) | → farmers.farmer_id |
+| members_migrated | migration | INT | – |
+| age | migration | INT | – |
+| gender | migration | TEXT | – |
 | age_gender | migration | TEXT | – |
 | reason | migration | TEXT | – |
 | migration_type | migration | TEXT | – |
 | remittance | migration | NUMERIC | – |
+| income_contribution_details | migration | TEXT | – |
 
 ---
 
@@ -199,6 +210,7 @@ This document lists the schema for the PMKSY socio-economic survey form, convert
 | strategy | adaptation_strategies | TEXT | – |
 | aware | adaptation_strategies | BOOLEAN | – |
 | adopted | adaptation_strategies | BOOLEAN | – |
+| strategy_order | adaptation_strategies | INT | – |
 
 ---
 
@@ -213,11 +225,27 @@ This document lists the schema for the PMKSY socio-economic survey form, convert
 | kcc | financials | BOOLEAN | – |
 | kcc_used | financials | BOOLEAN | – |
 | memberships | financials | TEXT/JSON | – |
+| membership_fpo | financials | BOOLEAN | – |
+| membership_cooperative | financials | BOOLEAN | – |
+| membership_marketing | financials | BOOLEAN | – |
+| membership_shg | financials | BOOLEAN | – |
+| membership_useful | financials | BOOLEAN | – |
 | benefits | financials | TEXT | – |
 | soil_testing | financials | BOOLEAN | – |
 | training | financials | TEXT | – |
 | info_sources | financials | TEXT | – |
 | constraints | financials | TEXT | – |
+| soil_erosion_problem | financials | BOOLEAN | – |
+| transportation_facilities | financials | BOOLEAN | – |
+| road_connectivity | financials | BOOLEAN | – |
+| cold_storage_facilities | financials | BOOLEAN | – |
+| market_availability | financials | BOOLEAN | – |
+| distance_to_market_km | financials | NUMERIC | – |
+| direct_marketing_mode | financials | INT | – |
+| sell_to_government_msp | financials | BOOLEAN | – |
+| cooperative_marketing_society | financials | BOOLEAN | – |
+| wild_animal_problem | financials | BOOLEAN | – |
+| additional_constraints | financials | TEXT | – |
 
 ---
 
@@ -226,11 +254,12 @@ This document lists the schema for the PMKSY socio-economic survey form, convert
 |-------------|------------|-----------|----------|
 | cp_id | consumption_pattern | UUID (PK) | – |
 | farmer_id | consumption_pattern | UUID (FK) | → farmers.farmer_id |
-| crop | consumption_pattern | TEXT | – |
-| crop_product | consumption_pattern | TEXT | – |
-| consumption_kg_month | consumption_pattern | NUMERIC | – |
-| purchased | consumption_pattern | BOOLEAN | – |
-| pds | consumption_pattern | BOOLEAN | – |
+| commodity | consumption_pattern | TEXT | – |
+| unit | consumption_pattern | TEXT | – |
+| purchased_from_market_qty | consumption_pattern | NUMERIC | – |
+| through_pds_qty | consumption_pattern | NUMERIC | – |
+| other_source_qty | consumption_pattern | NUMERIC | – |
+| food_expenditure_rs_month | consumption_pattern | NUMERIC | – |
 
 ---
 
