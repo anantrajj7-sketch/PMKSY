@@ -29,6 +29,10 @@ class ImportRunMetadata(TimeStampedModel):
         related_name="pmksy_metadata",
     )
     sheet_name = models.CharField(max_length=255, blank=True)
+    header_row_index = models.PositiveIntegerField(default=0)
+    data_start_row_index = models.PositiveIntegerField(default=1)
+    column_mappings = models.JSONField(default=dict, blank=True)
+    loader_options = models.JSONField(default=dict, blank=True)
 
     class Meta:
         db_table = "pmksy_import_run_metadata"
@@ -51,6 +55,7 @@ class Farmer(TimeStampedModel):
         blank=True,
         default=generate_registration_id,
     )
+    survey_serial_number = models.CharField(max_length=32, blank=True)
     name = models.CharField(max_length=255)
     address = models.TextField(blank=True)
     village = models.CharField(max_length=255, blank=True)
@@ -93,6 +98,12 @@ class LandHolding(TimeStampedModel):
     irrigated_area_ha = models.DecimalField(
         max_digits=15, decimal_places=4, null=True, blank=True
     )
+    cultivated_area_ha = models.DecimalField(
+        max_digits=15, decimal_places=4, null=True, blank=True
+    )
+    waste_land_area_ha = models.DecimalField(
+        max_digits=15, decimal_places=4, null=True, blank=True
+    )
     irrigation_source = models.CharField(max_length=255, blank=True)
     irrigation_no = models.CharField(max_length=255, blank=True)
     irrigation_latitude = models.DecimalField(
@@ -101,6 +112,7 @@ class LandHolding(TimeStampedModel):
     irrigation_longitude = models.DecimalField(
         max_digits=9, decimal_places=6, null=True, blank=True
     )
+    soil_type = models.CharField(max_length=255, blank=True)
     soil_details = models.TextField(blank=True)
 
     class Meta:
@@ -218,6 +230,8 @@ class WaterManagement(TimeStampedModel):
     labour_charge = models.DecimalField(
         max_digits=15, decimal_places=2, null=True, blank=True
     )
+    water_availability = models.CharField(max_length=255, blank=True)
+    farm_pond_available = models.BooleanField(null=True, blank=True)
 
     class Meta:
         db_table = "water_management"
@@ -261,17 +275,21 @@ class NutrientManagement(TimeStampedModel):
     )
     season = models.CharField(max_length=255, blank=True)
     crop_name = models.CharField(max_length=255, blank=True)
-    fym_kg = models.DecimalField(max_digits=15, decimal_places=4, null=True, blank=True)
-    nitrogen_kg = models.DecimalField(
+    fym_compost_kg_ha = models.DecimalField(
         max_digits=15, decimal_places=4, null=True, blank=True
     )
-    phosphate_kg = models.DecimalField(
+    urea_kg_ha = models.DecimalField(
         max_digits=15, decimal_places=4, null=True, blank=True
     )
-    gromer_kg = models.DecimalField(
+    dap_kg_ha = models.DecimalField(
         max_digits=15, decimal_places=4, null=True, blank=True
     )
-    other_fertilizer = models.CharField(max_length=255, blank=True)
+    mop_kg_ha = models.DecimalField(
+        max_digits=15, decimal_places=4, null=True, blank=True
+    )
+    other_fertilizer_kg_ha = models.DecimalField(
+        max_digits=15, decimal_places=4, null=True, blank=True
+    )
 
     class Meta:
         db_table = "nutrient_management"
@@ -360,12 +378,16 @@ class Migration(TimeStampedModel):
     farmer = models.ForeignKey(
         Farmer, related_name="migration_records", on_delete=models.CASCADE
     )
+    members_migrated = models.IntegerField(null=True, blank=True)
+    age = models.IntegerField(null=True, blank=True)
+    gender = models.CharField(max_length=32, blank=True)
     age_gender = models.CharField(max_length=255, blank=True)
     reason = models.CharField(max_length=255, blank=True)
     migration_type = models.CharField(max_length=255, blank=True)
     remittance = models.DecimalField(
         max_digits=15, decimal_places=2, null=True, blank=True
     )
+    income_contribution_details = models.TextField(blank=True)
 
     class Meta:
         db_table = "migration"
@@ -382,6 +404,7 @@ class AdaptationStrategy(TimeStampedModel):
     strategy = models.CharField(max_length=255)
     aware = models.BooleanField(null=True, blank=True)
     adopted = models.BooleanField(null=True, blank=True)
+    strategy_order = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "adaptation_strategies"
@@ -401,11 +424,29 @@ class Financial(TimeStampedModel):
     kcc = models.BooleanField(null=True, blank=True)
     kcc_used = models.BooleanField(null=True, blank=True)
     memberships = models.JSONField(null=True, blank=True)
+    membership_fpo = models.BooleanField(null=True, blank=True)
+    membership_cooperative = models.BooleanField(null=True, blank=True)
+    membership_marketing = models.BooleanField(null=True, blank=True)
+    membership_shg = models.BooleanField(null=True, blank=True)
+    membership_useful = models.BooleanField(null=True, blank=True)
     benefits = models.TextField(blank=True)
     soil_testing = models.BooleanField(null=True, blank=True)
     training = models.TextField(blank=True)
     info_sources = models.TextField(blank=True)
     constraints = models.TextField(blank=True)
+    soil_erosion_problem = models.BooleanField(null=True, blank=True)
+    transportation_facilities = models.BooleanField(null=True, blank=True)
+    road_connectivity = models.BooleanField(null=True, blank=True)
+    cold_storage_facilities = models.BooleanField(null=True, blank=True)
+    market_availability = models.BooleanField(null=True, blank=True)
+    distance_to_market_km = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    direct_marketing_mode = models.IntegerField(null=True, blank=True)
+    sell_to_government_msp = models.BooleanField(null=True, blank=True)
+    cooperative_marketing_society = models.BooleanField(null=True, blank=True)
+    wild_animal_problem = models.BooleanField(null=True, blank=True)
+    additional_constraints = models.TextField(blank=True)
 
     class Meta:
         db_table = "financials"
@@ -419,19 +460,26 @@ class ConsumptionPattern(TimeStampedModel):
     farmer = models.ForeignKey(
         Farmer, related_name="consumption_patterns", on_delete=models.CASCADE
     )
-    crop = models.CharField(max_length=255)
-    crop_product = models.CharField(max_length=255, blank=True)
-    consumption_kg_month = models.DecimalField(
+    commodity = models.CharField(max_length=255)
+    unit = models.CharField(max_length=64, blank=True)
+    purchased_from_market_qty = models.DecimalField(
         max_digits=15, decimal_places=4, null=True, blank=True
     )
-    purchased = models.BooleanField(null=True, blank=True)
-    pds = models.BooleanField(null=True, blank=True)
+    through_pds_qty = models.DecimalField(
+        max_digits=15, decimal_places=4, null=True, blank=True
+    )
+    other_source_qty = models.DecimalField(
+        max_digits=15, decimal_places=4, null=True, blank=True
+    )
+    food_expenditure_rs_month = models.DecimalField(
+        max_digits=15, decimal_places=2, null=True, blank=True
+    )
 
     class Meta:
         db_table = "consumption_pattern"
 
     def __str__(self) -> str:
-        return self.crop
+        return self.commodity
 
 
 class MarketPrice(TimeStampedModel):
